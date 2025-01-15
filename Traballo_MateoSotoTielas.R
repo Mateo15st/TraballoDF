@@ -1,5 +1,7 @@
 
-## Traballo final Datos funcionales
+## TRABALLO FINAL DATOS FUNCIONALES ## 
+
+# BASE DE DATOS
 
 #DATOS LONBORG
 datos_lonborg<-readRDS("Lonborg.rds")
@@ -55,6 +57,10 @@ lonborg.fdata.var<-list(lonborg.fdata,y=y)
 
 # ------------------ # 
 
+# VISUALIZACIÓN DE LOS DATOS
+
+# MAPAS EXPLICATIVOS
+
 library(ggplot2)
 library(rgl)
 library(mapview)
@@ -71,8 +77,6 @@ lonborg_puntos <- as.data.frame(lonborg_puntos)
 lonborg_puntos <- lonborg_puntos %>% filter(Location %in% ubi)
 # Estaciones de muestreo seleccionadas
 
-
-# VISUALIZACIÓN DE LOS DATOS
 
 library(leaflet)
 colors <- colorFactor(palette= "viridis", domain = lonborg_puntos$Location)
@@ -113,9 +117,11 @@ leaflet(lonborg_puntos) %>%
 
 
 # ------------------------- # 
+
 # TEMOS OS NOSOS DATOS PREPARADOS, AGORA COMEZAMOS CO TRABALLO
 
-# ANÁLISIS
+# ANÁLISIS DE DATOS FUNCIONALES
+
 
 library(fda.usc)
 lonborg.fdata<-fdata(mdata=matriz.lonborg, argvals=month, rangeval = c(1,12))
@@ -156,10 +162,14 @@ axis(4, at = (c(redond.cerc.10(min(lonborg.fdata.var$y[,1])),150,250,350,
 
 # Etiqueta para la leyenda
 mtext("DOC", side = 3, line = 2, cex = 1)
-
+par(mfrow=c(1,1))
 
 # ---------------- # 
+
+
 # SUAVIZACIÓN DE LAS CURVAS
+
+# Base de Fourier
 fou=create.fourier.basis(lonborg.fdata$rangeval,nbasis=7); fou
 matplot(1:12, eval.basis(1:12,fou),type="l")  #cada una de las líneas se corresponden con los elementos de la base.
 # base de fourier
@@ -174,7 +184,6 @@ plot(lonborg.fd[1:8],main="Base de Fourier",xlab="Tempo (meses)",ylab="Media Tem
 par(mfrow=c(1,1))
 
 
-
 # COMPONENTES PRINCIPALES
 lon.pc=create.pc.basis(lonborg.fdata,l=1:3)
 names(lon.pc)
@@ -184,7 +193,7 @@ abline(h=0)
 
 summary(lon.pc) #1 componente explica el 87.93% de la variabilidad. En total, PC3: 99.36%
 pairs(lon.pc$coefs) #componentes principales
-
+par(mfrow=c(1,1))
 
 
 # ----------------- #
@@ -247,10 +256,14 @@ lines(lonborg.fdata[which(out.FM$Dep<out.FM$quantile),],
 
 
 #-------------------------------#
+
+
+# ------------------------- # 
+
+## REGRESIÓN ## 
+
+
 # Aplicar regresión coas variables: CTD.TEMPERATURE + CTD.SALINITY
-
-## REGRESIÓN 
-
 
 temp=lonborg.fdata
 length(temp);nrow(temp)
@@ -360,6 +373,7 @@ summary(res.glm)
 
 par(mfrow=c(2,2))
 plot(res.glm)
+par(mfrow=c(1,1))
 
 pred.values<-data.frame("pred.DOC"=res.glm$fitted.values)
 plot(ldatm$df$DOC,pred.values$pred.DOC,xlab="Valores DOC",ylab="Predicciones",ylim=c(50,200),xlim=c(50,200))
@@ -378,7 +392,8 @@ res.sam=fregre.gsam(DOC~s(Temp)+s(Sal),family=gaussian(),data=ldatm,basis.x=b.x)
 summary(res.sam)
 
 par(mfrow=c(3,2))
-plot(res.sam)
+plot(res.sam,ylim=c(-100,100))
+par(mfrow=c(1,1))
 # RMSE mod GAM
 sqrt(sum((res.sam$residuals)^2)/length(res.sam$residuals))
 
@@ -392,4 +407,214 @@ summary(res.gkam)
 
 #RMSE mod GKAM
 sqrt(sum((res.gkam$residuals)^2)/length(res.gkam$residuals))
+
+# ------------------------ #
+
+# REGRESIÓN FUNCIONAL CON RESPUESTA FUNCIONAL
+
+# salinidade como fdata
+Sal
+# temperatura como fdata
+temp
+
+# ahora convertimos DOC como fdata
+lonborg.doc<- lonborg %>% group_by(Location,MONTH) %>% summarise(meanDOC = mean(DOC))
+print(lonborg.doc,n=30)
+
+matriz.lonborg.doc<- lonborg.doc %>%
+  pivot_wider(names_from = MONTH, values_from = meanDOC)
+matriz.lonborg.doc<-as.data.frame(matriz.lonborg.doc) 
+matriz.lonborg.doc<-na.omit(matriz.lonborg.doc); matriz.lonborg.doc
+#matriz.lonborg<-as.matrix(matriz.lonborg); matriz.lonborg
+rownames(matriz.lonborg.doc)<- matriz.lonborg.doc$Location
+matriz.lonborg.doc<-matriz.lonborg.doc[,-1]
+nrow(matriz.lonborg.doc)
+month<-as.vector(1:12)
+matriz.lonborg.doc
+lonborg.doc.fdata<-fdata(mdata=matriz.lonborg.doc, argvals=month, rangeval = c(1,12))
+
+doc=lonborg.doc.fdata
+doc
+
+# Crear una base funcional B-spline
+rangeval <- range(temp$argvals)  # Rango de los datos funcionales
+num_basis <- 8                 # Número de funciones base
+b.x <- create.bspline.basis(rangeval, nbasis = num_basis)
+num_basis <- 8
+b.t <- create.bspline.basis(rangeval, nbasis = num_basis)
+
+res.fr = fregre.basis.fr(temp,doc,basis.s = b.x, basis.t = b.t)
+par(mfrow=c(1,2))
+plot(doc[1:10],lty=1,lwd=2)
+plot(res.fr$fitted.values[1:10],lty=2,lwd=2)
+
+par(mfrow=c(1,1))
+plot(res.fr$alpha.est)
+plot(res.fr$beta.estbifd)
+
+# ------------------------------- # 
+
+
+
+
+
+# ------------------------------- # 
+
+# CLASIFICACIÓN SUPERVISADA
+
+# Variable DOC > 150umol/L 
+# convertimos variable DOC a categórica (1,2)
+DOC2 = data.frame(DOC=DOC,grupo=0)
+for (i in 1:nrow(DOC2)) {
+  if (DOC2$DOC[i] < 100) {
+    DOC2$grupo[i] <- 1
+  }
+  else {
+    DOC2$grupo[i] <- 2
+  }
+}
+DOC2$grupo <- as.factor(DOC2$grupo)
+# bases PC's
+b.x=list(Temp=create.pc.basis(temp,1:3))
+
+# Para hacer clasificación y luego predicción, vamos a seleccionar una muestra del 80% para entrenar el modelo y el 20% restante para testearlo
+set.seed(1)
+nobs <- nrow(ldatm$df)
+itrain <- sample(nobs, 0.7 * nobs)
+
+#datos train
+ldatm2 = ldata(df= data.frame(grupo = DOC2$grupo[itrain]), temp=temp[itrain,])
+#datos test
+ldatmnew <- list(df = data.frame(gr = rep(NA, nrow(temp[-itrain,]))), temp = temp[-itrain,])
+
+#gráfico
+plot(ldatm2$temp,col=c(2:3)[ldatm2$df$grupo])
+legend("topleft",legend=c("Grupo 1","Grupo 2"),lty=1,lwd=2,col=c(2:3),cex=0.7)
+
+# ---------- # 
+
+# CLASIFICACIÓN
+
+# ESTIMACIÓN KERNEL
+res.knn=classif.knn(DOC2$grupo[itrain],temp[itrain,])
+table(res.knn$group,res.knn$group.est)
+
+pr.knn=predict(res.knn,ldatmnew$temp,type="prob")
+table(DOC2$grupo[-itrain],pr.knn$group.pred)
+
+# ---- #
+res.np=classif.np(DOC2$grupo[itrain],temp[itrain,])
+table(res.np$group,res.np$group.est)
+
+pr.np=predict(res.np,ldatmnew$temp,type="prob")
+table(DOC2$grupo[-itrain],pr.np$group.pred)
+
+# -------------------- # 
+# clasificación modelos xeneralizados
+res.glm=classif.glm(grupo~temp,data=ldatm2,basis.x=b.x)
+pr.glm=predict(res.glm,ldatmnew,type="prob")
+table(DOC2$grupo[-itrain],pr.glm$group.pred)
+
+res.gsam=classif.gsam(grupo~s(temp),data=ldatm2,basis.x=b.x)
+pr.gsam=predict(res.gsam,ldatmnew,type="prob")
+table(DOC2$grupo[-itrain],pr.gsam$group.pred)
+
+res.gkam=classif.gkam(grupo~temp,data=ldatm2,basis.x=b.x)
+pr.gkam=predict(res.gkam,ldatmnew,type="prob")
+table(DOC2$grupo[-itrain],pr.gkam$group.pred)
+
+
+# --------------------- # 
+
+# Clasificación nnet: redes neuronales
+library(nnet)
+set.seed(1)
+res.nnet=classif.nnet(grupo~temp,data = ldatm2,basis.x = b.x ,type ="1vsall")
+# lo importante es: group.est
+table(res.nnet$group,res.nnet$group.est)
+
+pr.nnet=predict(res.nnet,ldatmnew,type="prob")
+table(DOC2$grupo[-itrain],pr.nnet$group.pred)
+
+
+#clasificación rpart (non incluída no documento)
+set.seed(1)
+res.rpart = classif.rpart(grupo~temp, data = ldatm2, basis.x = b.x,type ="1vsall")
+table(res.rpart$group,res.rpart$group.est)
+
+pr.rpart=predict(res.rpart,ldatmnew,type="prob")
+table(DOC2$grupo[-itrain],pr.rpart$group.pred)
+
+# ---------------- # 
+
+# Profundidade datos multivariantes
+# DD-Plot
+par(mfrow=c(1,2))
+res.DD = classif.DD(group = ldatm2$df$grupo, fdataobj = ldatm2$temp, depth = "mode", classif = "glm")
+res.DD1 = classif.DD(group = ldatm2$df$grupo, fdataobj = ldatm2$temp, depth = "mode", classif = "knn")
+par(mfrow=c(1,1))
+
+pr.DD=predict(res.DD,ldatmnew$temp,type="prob")
+table(DOC2$grupo[-itrain],pr.DD$group.pred)
+
+pr.DD1=predict(res.DD1,ldatmnew$temp,type="prob")
+table(DOC2$grupo[-itrain],pr.DD1$group.pred)
+
+
+# ---------------------- # 
+
+# CLUSTERING
+plot(temp)
+set.seed(1)
+res.km = kmeans.fd(temp,ncl=2)
+table(DOC2$grupo,res.km$cluster)
+
+# ---- # 
+
+library(fda.usc)
+source("fDBSCAN.R")
+rmeanshift = fmeanshift(temp,h=-0.25)
+table(rmeanshift$cluster)
+
+plot(rmeanshift$centers)
+table(DOC2$grupo,rmeanshift$cluster)
+
+
+# --------------------------- # 
+
+# CONTRASTES DE HIPÓTESIS EN FDA
+
+bajoDOC<- temp[DOC2$grupo == 1]
+altoDOC<- temp[DOC2$grupo == 2]
+
+# Contraste medias 
+set.seed(1)
+(fmean <- fmean.test.fdata(bajoDOC,altoDOC))
+
+# contraste covarianzas
+set.seed(1)
+(fcov <- cov.test.fdata(bajoDOC,altoDOC))
+
+# Contraste distribuciones
+set.seed(1)
+(fdist<- fEqDistrib.test(bajoDOC,altoDOC))
+
+# Contraste proyecciones
+(fproy <-XYRP.test(bajoDOC,altoDOC,nproj=3,npc=5))
+    ?XYRP.test
+
+# Contraste anova
+set.seed(1)
+anovapho=fanova.onefactor(temp,factor(DOC2$grupo),nboot=1000,plot=TRUE)
+anovapho
+
+
+# test lineal
+resflm=flm.test(temp,DOC,B=1000)
+resflm
+
+
+# ------------------------------------ # 
+
+# FIN DO SCRIPT EMPREGADO PARA REALIZAR O TRABALLO FINAL DA MATERIA DE DATOS FUNCIONAIS
 
